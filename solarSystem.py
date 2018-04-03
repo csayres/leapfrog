@@ -28,9 +28,11 @@ mNeptune = 1.024e26
 
 
 ###################
-# generate list of position for solar system objects
-# at each time step that will be used in the solver
-# precomputing these saves time!
+# generate list of positions for solar system objects
+# at each time step
+# precomputing these saves time/computation, but it's a bit of a cheat
+# because for a true n-body simulation we should be updating
+# these each iteration of the leapfrog solver
 dt = secondsPerHour # time step used for solver, 1 hour in seconds
 
 # work in astropy's Time class which
@@ -60,12 +62,12 @@ saturnArr = get_body_barycentric("saturn", astroTimeArray).xyz.value
 uranusArr = get_body_barycentric("uranus", astroTimeArray).xyz.value
 neptuneArr = get_body_barycentric("neptune", astroTimeArray).xyz.value
 
-# throw away the z values in each of the above arrays, and convert
+# throw away the z values in each of the above arrays
 # we only care about xy (2D)
 # convert from AU (returned by astropy) to meteres
 # transpose arrays so time is along first axis, position along second
-# resulting array shape is N x [x,y]
-# overwrite original arrays to save some memory
+# resulting array shape is n x [x,y]
+# overwrite original arrays
 sunArr = numpy.transpose(sunArr[:2,:]*metersPerAU)
 mercuryArr = numpy.transpose(mercuryArr[:2,:]*metersPerAU)
 venusArr = numpy.transpose(venusArr[:2,:]*metersPerAU)
@@ -77,7 +79,7 @@ uranusArr = numpy.transpose(uranusArr[:2,:]*metersPerAU)
 neptuneArr = numpy.transpose(neptuneArr[:2,:]*metersPerAU)
 #########################################
 
-#### massage solar system stuff into dicts
+#### solar system stuff into dicts so we can iterate over elements.
 ssDict = {
     "sun": {"mass": mSun, "posArr": sunArr, "color": "gold", "size": 30},
     "mercury": {"mass": mMercury, "posArr": mercuryArr, "color": "tan", "size": 12},
@@ -117,7 +119,7 @@ probeVXY[0,:] = probeVXY_o
 # due to rocket thrusters
 thrustArr = numpy.zeros((n,2))
 # at first timestep give the probe a delta thrust
-# equal to the escape velocity from earth
+# equal to the escape velocity from earth in the +y direction
 thrustArr[0,:] = numpy.array([0, esc_vel*1.15])
 
 ##############################
@@ -139,13 +141,15 @@ for i in range(n-1):
         # get distance to object
         rVec = objPos - nextPos
         rMag = numpy.linalg.norm(rVec)
+        # add this component to the updatedVelocity variable
         updatedVelocity += dt*(G*objMass/rMag**2)*(rVec/rMag)
     # add in any additional delta velocity from thrust array
     # thrust array is how you perform flight adjustments
     updatedVelocity += thrustArr[i,:]
     probeVXY[i+1,:] = updatedVelocity
 
-# save image for each 100th timestep
+
+# save image to disk for each 200th timestep
 lim = numpy.max(numpy.abs(jupiterArr*1.5))
 downsample = numpy.arange(0,n,200)
 imgNum=0
@@ -165,10 +169,19 @@ for i in downsample:
     y = probeXY[i][1]
     color = 'black'
     plt.plot(x,y, marker="1", markersize=10, mew=3, color=color)
+
+    # set the xy limits of the plot to be a little
+    # bigger than Jupiter's orbit
     plt.xlim([-lim, lim])
     plt.ylim([-lim, lim])
+    # construct a filename to save this image
+    # we want it to be fig<zeropaddedInt>.png
     zfillStr = ("%i"%imgNum).zfill(8)
-    plt.savefig("fig%s.png"%zfillStr)
+    filename = "fig%s.png"%zfillStr
+    plt.savefig(filename)
     plt.close()
 
+# if ffmpeg is installed....
+# when images are saved to disk create a movie with ffmpeg like this:
 # ffmpeg -r 10 -f image2 -i fig%08d.png out.mp4
+
